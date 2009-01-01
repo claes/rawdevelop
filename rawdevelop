@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, subprocess
+import os, re, subprocess
 
 class ImageOperation:
     
@@ -30,21 +30,19 @@ class PipelineOperation:
 
 class Image: 
 
-    #Contains one image file or files from different steps in the process?
-    #Any intermediate file names could be stored in a map
-    #All files could be removed in the end
+    files = {}
 
-    def get_file(name):
-        print ""
+    def get_file(self, name):
+        return self.files[name]
         
-    def set_file():
-        print ""
+    def set_file(self, name, file):
+        self.files[name] = file
 
 #def develop_from_raw(image, settings):
 #    print func_name
 
 def correct_exposure(image, settings):
-    print "foo"
+    print
 
 def reduce_noise(image, settings):
     print func_name
@@ -55,55 +53,114 @@ def sharpen(image, settings):
 def denoise(image, settings):
     print func_name
 
+def enfuse_from_raw(image, settings):
+    inputfile = image.get_file("raw")
+    
+    exposure_list = ["-2", "0", "1"]
+    developedfiles = []
+
+    for exposure in exposure_list:
+
+        outputfile = "enfused" + exposure + ".tiff"
+        ufraw_cmd = ["ufraw-batch", \
+                   "--shrink", settings["shrink"], \
+                   "--wb", settings["wb"], \
+                   "--saturation", settings["saturation"], \
+                   "--restore", settings["restore"], \
+                   "--exposure", settings["exposure"], \
+                   "--black-point", settings["black-point"], \
+                   "--clip", settings["clip"], \
+                   "--interpolation", settings["interpolation"], \
+                   "--wavelet-denoising-threshold", settings["wavelet-denoising-threshold"], \
+                   #"--overwrite", settings["overwrite"], \
+                   "--out-type", settings["out-type"], \
+                   "--output", outputfile, \
+                   inputfile]
+        
+        retval = subprocess.call(ufraw_cmd, 0, None, None, None, None)
+        developedfiles.append(outputfile)
+    
+        
+    outputfile = "enfused.tiff"
+    
+    enfuse_cmd1 = ["enfuse", \
+                      "-o", outputfile, \
+                      "--wExposure", settings["wExposure"], \
+                      "--wSaturation", settings["wSaturation"], \
+                      "--wContrast", settings["wContrast"], \
+                      "--wMu", settings["wMu"], \
+                      "--wSigma", settings["wSigma"]]
+
+    enfuse_cmd1.extend(developedfiles)
+
+    retval = subprocess.call(enfuse_cmd1, 0, None, None, None, None)
+    image.set_file("current", outputfile)    
+        
+
 def ca_correct(image, settings):
-    print func_name
+
+    inputfile = image.get_file("current")
+
+    outputfile = "tca_corrected.tiff"
+    tca_correct_cmd = ["tca_correct", \
+                           "-o", "abcv", \
+                           inputfile]
+
+    tca_correct_proc = subprocess.Popen(tca_correct_cmd, stdout = subprocess.PIPE)
+    tca_correct_result = tca_correct_proc.communicate()[0]
+    print "tca_correct_result", tca_correct_result
+    ca_params = re.findall( "-r (.*) -b (.*)", tca_correct_result )
+
+    outputfile = "ca_corrected.tiff"
+    
+    fulla_cmd = ["fulla", \
+                     "-r", ca_params[0][0], \
+                     "-b", ca_params[0][1], \
+                     "-o", outputfile, \
+                     inputfile]
+    
+    retval = subprocess.call(fulla_cmd, 0, None, None, None, None)
+    image.set_file("current", outputfile)
+
 
 def develop_from_raw(image, settings):
 
-    inputfile = "inputfile.cr2"
+    inputfile = image.get_file("raw")
     outputfile = "outputfile.tiff"
     
     cmd = ["ufraw-batch", \
-          "--shrink", settings["shrink"], \
-          "--wb", settings["wb"], \
-          "--saturation", settings["saturation"], \
-          "--restore", settings["restore"], \
-          "--exposure", settings["exposure"], \
-          "--black-point", settings["black-point"], \
-          "--clip", settings["clip"], \
-          "--interpolation", settings["interpolation"], \
-          "--wavelet-denoising-threshold", settings["wavelet-denoising-threshold"], \
-          #"--overwrite", settings["overwrite"], \
-          "--out-type", settings["out-type"], \
-          "--output", outputfile, \
-          inputfile]
-
-    # Create output log file
-    outFile = os.path.join(os.curdir, "output.log")
-    outptr = file(outFile, "w")
-    
-    # Create error log file
-    errFile = os.path.join(os.curdir, "error.log")
-    errptr = file(errFile, "w")
+               "--shrink", settings["shrink"], \
+               "--wb", settings["wb"], \
+               "--saturation", settings["saturation"], \
+               "--restore", settings["restore"], \
+               "--exposure", settings["exposure"], \
+               "--black-point", settings["black-point"], \
+               "--clip", settings["clip"], \
+               "--interpolation", settings["interpolation"], \
+               "--wavelet-denoising-threshold", settings["wavelet-denoising-threshold"], \
+               #"--overwrite", settings["overwrite"], \
+               "--out-type", settings["out-type"], \
+               "--output", outputfile, \
+               inputfile]
 
     # Call the subprocess using convenience method
-    retval = subprocess.call(cmd, 0, None, None, outptr, errptr)
-    
-    # Close log handles
-    errptr.close()
-    outptr.close()
-    
-    # Check the process exit code
-    if not retval == 0:
-        errptr = file(errFile, "r")
-        errData = errptr.read()
-        errptr.close()
-        raise Exception("Error executing command: " + repr(errData))
+    retval = subprocess.call(cmd, 0, None, None, None, None)
+
+    image.set_file("current", outputfile)
     
 
 def main():    
 
-    ufraw_settings = { "shrink": "2", \
+    enfuse_settings = { \
+        "wExposure": "1.0", \
+        "wSaturation": "0.2", \
+        "wContrast": "0", \
+        "wMu": "0.5", \
+        "wSigma": "0.2", \
+        }
+
+    ufraw_settings = { \
+        "shrink": "2", \
         "wb": "camera", \
         "saturation": "1.0", \
         "restore": "lch", \
@@ -115,23 +172,32 @@ def main():
         "out-type": "tiff16" \
         }
 
+
+    settings = {}
+    settings.update(enfuse_settings)
+    settings.update(ufraw_settings)
+
+
     sharpen_op = ImageOperation("Sharpen", correct_exposure, [])
     reduce_noise_op = ImageOperation("Reduce noise", correct_exposure, [])
     adjust_color_op = ImageOperation("Adjust color", correct_exposure, [])
     correct_exposure_op = ImageOperation("Correct exposure", correct_exposure, [])
-    ca_correct_op = ImageOperation("Correct chromatic aberration", correct_exposure, [])
+    ca_correct_op = ImageOperation("Correct chromatic aberration", ca_correct, [])
     correct_whitebalance_op = ImageOperation("Correct whitebalance", correct_exposure, [])
-    develop_from_raw_op = ImageOperation("Develop from RAW", develop_from_raw, ufraw_settings)
+    enfuse_op = ImageOperation("Enfuse", enfuse_from_raw, settings)
+    develop_from_raw_op = ImageOperation("Develop from RAW", develop_from_raw, settings)
 
     sharpen = PipelineOperation(sharpen_op, [])
     denoise = PipelineOperation(reduce_noise_op, [sharpen])
     adjust_color = PipelineOperation(adjust_color_op, [denoise])
-    ca_correct = PipelineOperation(ca_correct_op, [adjust_color])
-    adjust_exposure = PipelineOperation(correct_exposure_op, [ca_correct])
+    ca_correc = PipelineOperation(ca_correct_op, [adjust_color])
+    adjust_exposure = PipelineOperation(correct_exposure_op, [ca_correc])
     whitebalance = PipelineOperation(correct_whitebalance_op, [adjust_exposure])
-    develop_from_ra = PipelineOperation(develop_from_raw_op, [whitebalance])
+    enfus = PipelineOperation(enfuse_op, [adjust_exposure])
+    develop_from_ra = PipelineOperation(develop_from_raw_op, [enfus])
 
     image = Image()
+    image.set_file("raw", "inputfile.cr2");
 
     develop_from_ra.perform_operation(develop_from_raw, image)
 
