@@ -50,13 +50,99 @@ def reduce_noise(image, settings):
 def sharpen(image, settings):
     print func_name
 
+def boost_color(image, settings):
+    inputfile = image.get_file("current")
+    outputfile = "color-boosted.tiff"
+
+    a_boost = "3x60%"
+    b_boost = "3x60%"
+
+    #Convert to LAB colorspace
+    rgb_to_lab_L_cmd = [
+        "convert", \
+            inputfile, \
+            "-colorspace", "LAB", \
+            "-channel", "R", \
+            "-separate", \
+            "L.tiff"
+        ]
+    rgb_to_lab_A_cmd = [
+        "convert", \
+            inputfile, \
+            "-colorspace", "LAB", \
+            "-channel", "G", \
+            "-separate", \
+            "A.tiff"
+        ]
+    rgb_to_lab_B_cmd = [
+        "convert", \
+            inputfile, \
+            "-colorspace", "LAB", \
+            "-channel", "B", \
+            "-separate", \
+            "B.tiff"
+        ]
+
+    boost_A_cmd = [
+        "convert", \
+            "A.tiff", \
+            "-sigmoidal-contrast", a_boost, \
+            "A.tiff"
+        ]
+    boost_B_cmd = [
+        "convert", \
+            "B.tiff", \
+            "-sigmoidal-contrast", b_boost, \
+            "B.tiff"
+        ]
+    
+    lab_to_rgb_cmd = [
+        "convert", \
+            "L.tiff", \
+            "-colorspace", "LAB", \
+            "L.tiff", "-compose", "CopyRed", "-composite",  \
+            "A.tiff", "-compose", "CopyGreen", "-composite", \
+            "B.tiff", "-compose", "CopyBlue", "-composite", \
+            "-colorspace", "RGB", \
+            outputfile
+            ]
+
+    subprocess.call(rgb_to_lab_L_cmd, 0, None, None, None, None)
+    subprocess.call(rgb_to_lab_A_cmd, 0, None, None, None, None)
+    subprocess.call(rgb_to_lab_B_cmd, 0, None, None, None, None)
+    subprocess.call(boost_A_cmd, 0, None, None, None, None)
+    subprocess.call(boost_B_cmd, 0, None, None, None, None)
+    subprocess.call(lab_to_rgb_cmd, 0, None, None, None, None)
+
+
 def denoise(image, settings):
-    print func_name
+
+    inputfile = image.get_file("current")
+    outputfile = "greycstored.tiff"
+
+    greycstoration_cmd = [
+        "greycstoration", \
+            "-restore", inputfile, \
+            "-o", outputfile, \
+            "-dt", settings["dt"], \
+            "-p", settings["p"], \
+            "-a", settings["a"], \
+            "-alpha", settings["alpha"], \
+            "-sigma", settings["sigma"], \
+            "-fast", settings["fast"], \
+            "-iter", settings["iter"], \
+            "-visu", "0", \
+            "-cbase", settings["cbase"], \
+            "-crange", settings["crange"]
+        ]
+
+    retval = subprocess.call(greycstoration_cmd, 0, None, None, None, None)
+    image.set_file("current", outputfile)
 
 def enfuse_from_raw(image, settings):
     inputfile = image.get_file("raw")
     
-    exposure_list = ["-2", "0", "1"]
+    exposure_list = ["-2", "0", "2"]
     developedfiles = []
 
     for exposure in exposure_list:
@@ -67,7 +153,7 @@ def enfuse_from_raw(image, settings):
                    "--wb", settings["wb"], \
                    "--saturation", settings["saturation"], \
                    "--restore", settings["restore"], \
-                   "--exposure", settings["exposure"], \
+                   "--exposure", exposure, \
                    "--black-point", settings["black-point"], \
                    "--clip", settings["clip"], \
                    "--interpolation", settings["interpolation"], \
@@ -153,34 +239,46 @@ def main():
 
     enfuse_settings = { \
         "wExposure": "1.0", \
-        "wSaturation": "0.2", \
-        "wContrast": "0", \
-        "wMu": "0.5", \
-        "wSigma": "0.2", \
-        }
-
+            "wSaturation": "0.2", \
+            "wContrast": "0", \
+            "wMu": "0.5", \
+            "wSigma": "0.2", \
+            }
+    
     ufraw_settings = { \
         "shrink": "2", \
-        "wb": "camera", \
-        "saturation": "1.0", \
-        "restore": "lch", \
-        "exposure": "0", \
-        "black-point": "0", \
-        "clip": "digital", \
-        "interpolation": "ahd", \
-        "wavelet-denoising-threshold": "200", \
-        "out-type": "tiff16" \
-        }
+            "wb": "camera", \
+            "saturation": "1.0", \
+            "restore": "lch", \
+            "exposure": "0", \
+            "black-point": "0", \
+            "clip": "digital", \
+            "interpolation": "ahd", \
+            "wavelet-denoising-threshold": "20", \
+            "out-type": "tiff16" \
+            }
 
+    greycstoration_settings = { \
+        "dt": "75", \
+            "p": "0.8", \
+            "a": "0.25", \
+            "alpha": "1.5", \
+            "sigma": "1.5", \
+            "fast": "true", \
+            "iter": "1", \
+            "cbase": "1", \
+            "crange": "1,2"
+        }
 
     settings = {}
     settings.update(enfuse_settings)
     settings.update(ufraw_settings)
+    settings.update(greycstoration_settings)
 
 
     sharpen_op = ImageOperation("Sharpen", correct_exposure, [])
     reduce_noise_op = ImageOperation("Reduce noise", correct_exposure, [])
-    adjust_color_op = ImageOperation("Adjust color", correct_exposure, [])
+    boost_color_op = ImageOperation("Boost color", correct_exposure, [])
     correct_exposure_op = ImageOperation("Correct exposure", correct_exposure, [])
     ca_correct_op = ImageOperation("Correct chromatic aberration", ca_correct, [])
     correct_whitebalance_op = ImageOperation("Correct whitebalance", correct_exposure, [])
@@ -189,8 +287,8 @@ def main():
 
     sharpen = PipelineOperation(sharpen_op, [])
     denoise = PipelineOperation(reduce_noise_op, [sharpen])
-    adjust_color = PipelineOperation(adjust_color_op, [denoise])
-    ca_correc = PipelineOperation(ca_correct_op, [adjust_color])
+    boost_colo = PipelineOperation(boost_color_op, [denoise])
+    ca_correc = PipelineOperation(ca_correct_op, [boost_colo])
     adjust_exposure = PipelineOperation(correct_exposure_op, [ca_correc])
     whitebalance = PipelineOperation(correct_whitebalance_op, [adjust_exposure])
     enfus = PipelineOperation(enfuse_op, [adjust_exposure])
