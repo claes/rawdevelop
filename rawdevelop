@@ -56,11 +56,13 @@ class ImageOperation:
         return self.name + " " +  suffix + " " + str(self.local_settings) + extension
 
     def perform_operation(self, image):
-        print self.name
+        print self.name, self.local_settings
         self.operation(image)
         for child in self.children: 
             child.perform_operation(image)
-            
+
+    def add_child(self, child):
+        self.children.append(child)
 
 class Image: 
 
@@ -363,19 +365,19 @@ def main():
 
     enfuse_from_raw = Enfuse_from_raw_operation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
     create_LAB = RGB_to_LAB_operation({})
-    enfuse_from_raw.children.append(create_LAB)
+    enfuse_from_raw.add_child(create_LAB)
 
     unsharp = Unsharp_mask_operation({"input": "L-channel", "output": "L-channel" })
-    create_LAB.children.append(unsharp)
+    create_LAB.add_child(unsharp)
 
-    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
-    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
-    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
-    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
-    create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x60%"}))
-    create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x40%"}))
-    create_LAB.children.append(Boost_color_operation({"b_boost" : "1.5x40%"}))
-    create_LAB.children.append(Boost_color_operation({"b_boost" : "1.5x60%"}))
+    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
+    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
+    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
+    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
+    create_LAB.add_child(Boost_color_operation({"a_boost": "1.5x60%"}))
+    create_LAB.add_child(Boost_color_operation({"a_boost": "1.5x40%"}))
+    create_LAB.add_child(Boost_color_operation({"b_boost" : "1.5x40%"}))
+    create_LAB.add_child(Boost_color_operation({"b_boost" : "1.5x60%"}))
 
     image = Image()
     image.set_file("raw", "inputfile.cr2");
