@@ -2,42 +2,73 @@
 
 import os, re, subprocess
 
+enfuse_settings = { \
+    "wExposure": "1.0", \
+        "wSaturation": "0.2", \
+        "wContrast": "0", \
+        "wMu": "0.5", \
+        "wSigma": "0.2", \
+        }
+
+ufraw_settings = { \
+    "shrink": "2", \
+        "wb": "camera", \
+        "saturation": "1.0", \
+        "restore": "lch", \
+        "exposure": "0", \
+        "black-point": "0", \
+        "clip": "digital", \
+        "interpolation": "ahd", \
+        "wavelet-denoising-threshold": "20", \
+        "out-type": "tiff16" \
+        }
+
+greycstoration_settings = { \
+    "dt": "75", \
+        "p": "0.8", \
+        "a": "0.25", \
+        "alpha": "1.5", \
+        "sigma": "1.5", \
+        "fast": "true", \
+        "iter": "1", \
+        "cbase": "1", \
+        "crange": "1,2"
+    }
+
+global_settings = {}
+global_settings.update(enfuse_settings)
+global_settings.update(ufraw_settings)
+global_settings.update(greycstoration_settings)
+
 class ImageOperation:
     
     def __init__(self, settings):
-        self.settings = settings
+        self.children = []
+        self.local_settings = settings
+        #Override global settings with local settings
+        self.settings = global_settings.copy()
+        self.settings.update(self.local_settings)
 
-    def get_settings_string():
-        return ""
-
-    def process_image(self, image):
-        print "Performing operation", self.name
-        self.operation(image)
-        #do the stuff
-
-class PipelineOperation:
-
-    children = []
-
-    def __init__(self, image_operation, children):
-        self.image_operation = image_operation
-        self.children = children
+    def get_output_filename(self, suffix, extension):
+        return self.name + " " +  suffix + " " + str(self.local_settings) + extension
 
     def perform_operation(self, image):
-        self.image_operation.process_image(image)
+        self.operation(image)
         for child in self.children: 
             child.perform_operation(image)
+            
 
 class Image: 
 
-    files = {}
+    def __init__(self):
+        self.files = {}
+        self.depth = 0
 
     def get_file(self, name):
         return self.files[name]
         
     def set_file(self, name, file):
         self.files[name] = file
-
 
 class BoostColorOperation(ImageOperation):
 
@@ -47,12 +78,17 @@ class BoostColorOperation(ImageOperation):
 
     def operation(self, image):
         inputfile = image.get_file("current")
-        outputfile = "color-boosted.tiff"
-        
-        a_boost = "3x60%"
-        b_boost = "3x60%"
-        
-    #Convert to LAB colorspace
+        outputfile = self.get_output_filename("boosted", ".tiff")
+        a_boosted = self.get_output_filename("A-boosted", ".tiff")
+        b_boosted = self.get_output_filename("B-boosted", ".tiff")
+
+        #Sigmoidal contrast format: "XxY%", where X=contrast factor, Y=center of sigmoid 
+        a_boost = self.settings["a_boost"]
+        b_boost = self.settings["b_boost"]
+
+        print a_boost, b_boost
+
+        #Convert to LAB colorspace
         rgb_to_lab_L_cmd = [
             "convert", \
                 inputfile, \
@@ -82,13 +118,13 @@ class BoostColorOperation(ImageOperation):
             "convert", \
                 "A.tiff", \
                 "-sigmoidal-contrast", a_boost, \
-                "A.tiff"
+                a_boosted
             ]
         boost_B_cmd = [
             "convert", \
                 "B.tiff", \
                 "-sigmoidal-contrast", b_boost, \
-                "B.tiff"
+                b_boosted
             ]
         
         lab_to_rgb_cmd = [
@@ -96,8 +132,8 @@ class BoostColorOperation(ImageOperation):
                 "L.tiff", \
                 "-colorspace", "LAB", \
                 "L.tiff", "-compose", "CopyRed", "-composite",  \
-                "A.tiff", "-compose", "CopyGreen", "-composite", \
-                "B.tiff", "-compose", "CopyBlue", "-composite", \
+                a_boosted, "-compose", "CopyGreen", "-composite", \
+                b_boosted, "-compose", "CopyBlue", "-composite", \
                 "-colorspace", "RGB", \
                 outputfile
             ]
@@ -118,7 +154,7 @@ class ReduceNoiseOperation(ImageOperation):
     def operation(self, image):
         
         inputfile = image.get_file("current")
-        outputfile = "greycstored.tiff"
+        outputfile = self.get_output_filename("", ".tiff")
         
         greycstoration_cmd = [
             "greycstoration", \
@@ -145,17 +181,17 @@ class EnfuseFromRawOperation(ImageOperation):
 
     def __init__(self, settings):
         ImageOperation.__init__(self, settings)
-        self.name = "Develop from raw + enfuse"
+        self.name = "Develop from raw, enfuse"
         
     def operation(self, image):
         inputfile = image.get_file("raw")
         
-        exposure_list = ["-2", "0", "2"]
+        exposure_list = self.settings["enfuse_exposures"]
         developedfiles = []
         
         for exposure in exposure_list:
             
-            outputfile = "enfused" + exposure + ".tiff"
+            outputfile = self.get_output_filename(exposure, ".tiff")
             ufraw_cmd = ["ufraw-batch", \
                              "--shrink", self.settings["shrink"], \
                              "--wb", self.settings["wb"], \
@@ -175,20 +211,20 @@ class EnfuseFromRawOperation(ImageOperation):
             developedfiles.append(outputfile)
             
             
-            outputfile = "enfused.tiff"
+        outputfile = self.get_output_filename("out", ".tiff")
             
-            enfuse_cmd1 = ["enfuse", \
-                               "-o", outputfile, \
-                               "--wExposure", self.settings["wExposure"], \
-                               "--wSaturation", self.settings["wSaturation"], \
-                               "--wContrast", self.settings["wContrast"], \
-                               "--wMu", self.settings["wMu"], \
-                               "--wSigma", self.settings["wSigma"]]
-            
-            enfuse_cmd1.extend(developedfiles)
-            
-            retval = subprocess.call(enfuse_cmd1, 0, None, None, None, None)
-            image.set_file("current", outputfile)    
+        enfuse_cmd1 = ["enfuse", \
+                           "-o", outputfile, \
+                           "--wExposure", self.settings["wExposure"], \
+                           "--wSaturation", self.settings["wSaturation"], \
+                           "--wContrast", self.settings["wContrast"], \
+                           "--wMu", self.settings["wMu"], \
+                           "--wSigma", self.settings["wSigma"]]
+        
+        enfuse_cmd1.extend(developedfiles)
+        
+        retval = subprocess.call(enfuse_cmd1, 0, None, None, None, None)
+        image.set_file("current", outputfile)    
             
 
 class CACorrectOperation(ImageOperation):
@@ -201,7 +237,6 @@ class CACorrectOperation(ImageOperation):
         
         inputfile = image.get_file("current")
         
-        outputfile = "tca_corrected.tiff"
         tca_correct_cmd = ["tca_correct", \
                                "-o", "abcv", \
                                inputfile]
@@ -210,7 +245,7 @@ class CACorrectOperation(ImageOperation):
         tca_correct_result = tca_correct_proc.communicate()[0]
         ca_params = re.findall( "-r (.*) -b (.*)", tca_correct_result )
         
-        outputfile = "ca_corrected.tiff"
+        outputfile = self.get_output_filename("", ".tiff")
         
         fulla_cmd = ["fulla", \
                          "-r", ca_params[0][0], \
@@ -231,7 +266,7 @@ class DevelopFromRawOperation(ImageOperation):
     def operation(self, image):
         
         inputfile = image.get_file("raw")
-        outputfile = "outputfile.tiff"
+        outputfile = self.get_output_filename("", ".tiff")
         
         cmd = ["ufraw-batch", \
                    "--shrink", self.settings["shrink"], \
@@ -256,54 +291,15 @@ class DevelopFromRawOperation(ImageOperation):
         
 def main():    
 
-    enfuse_settings = { \
-        "wExposure": "1.0", \
-            "wSaturation": "0.2", \
-            "wContrast": "0", \
-            "wMu": "0.5", \
-            "wSigma": "0.2", \
-            }
-    
-    ufraw_settings = { \
-        "shrink": "2", \
-            "wb": "camera", \
-            "saturation": "1.0", \
-            "restore": "lch", \
-            "exposure": "0", \
-            "black-point": "0", \
-            "clip": "digital", \
-            "interpolation": "ahd", \
-            "wavelet-denoising-threshold": "20", \
-            "out-type": "tiff16" \
-            }
-
-    greycstoration_settings = { \
-        "dt": "75", \
-            "p": "0.8", \
-            "a": "0.25", \
-            "alpha": "1.5", \
-            "sigma": "1.5", \
-            "fast": "true", \
-            "iter": "1", \
-            "cbase": "1", \
-            "crange": "1,2"
-        }
-
-    settings = {}
-    settings.update(enfuse_settings)
-    settings.update(ufraw_settings)
-    settings.update(greycstoration_settings)
-
-
-    reduce_noise = PipelineOperation(ReduceNoiseOperation(settings), [])
-    boost_color = PipelineOperation(BoostColorOperation(settings), [reduce_noise])
-    ca_correct = PipelineOperation(CACorrectOperation(settings), [boost_color])
-    enfuse = PipelineOperation(EnfuseFromRawOperation(settings), [ca_correct])
-    develop_from_raw = PipelineOperation(DevelopFromRawOperation(settings), [enfuse])
+    enfuse_from_raw = EnfuseFromRawOperation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
+    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
+    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
+    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
+    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
 
     image = Image()
     image.set_file("raw", "inputfile.cr2");
 
-    develop_from_raw.perform_operation(image)
+    enfuse_from_raw.perform_operation(image)
 
 main()
