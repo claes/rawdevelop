@@ -56,6 +56,7 @@ class ImageOperation:
         return self.name + " " +  suffix + " " + str(self.local_settings) + extension
 
     def perform_operation(self, image):
+        print self.name
         self.operation(image)
         for child in self.children: 
             child.perform_operation(image)
@@ -120,6 +121,44 @@ class RGB_to_LAB_operation(ImageOperation):
         image.set_file("L-channel", l_channel)    
         image.set_file("A-channel", a_channel)    
         image.set_file("B-channel", b_channel)    
+
+
+class Unsharp_mask_operation(ImageOperation):
+
+    def __init__(self, settings):
+        ImageOperation.__init__(self, settings)
+        self.name = "Unsharp mask"
+
+    def operation(self, image):
+
+        if "input" in self.settings:
+            input = self.settings["input"]
+        else:
+            input = "current"
+
+        if "output" in self.settings:
+            output = self.settings["output"]
+        else:
+            output = "current"
+
+        inputfile = image.get_file(input)
+        outputfile = self.get_output_filename("", ".tiff")
+
+        if "unsharp" in self.settings:
+            unsharp = self.settings["unsharp"]
+        else:
+            unsharp = "1.5x1.2+1.0+0.10"
+
+        unsharp_mask_cmd = [
+            "convert", \
+                inputfile, \
+            "-unsharp", unsharp, \
+                outputfile
+            ]        
+        subprocess.call(unsharp_mask_cmd, 0, None, None, None, None)
+
+        image.set_file(output, outputfile)
+
 
 class Boost_color_operation(ImageOperation):
 
@@ -325,15 +364,18 @@ def main():
     enfuse_from_raw = Enfuse_from_raw_operation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
     create_LAB = RGB_to_LAB_operation({})
     enfuse_from_raw.children.append(create_LAB)
-    create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
-    create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
-    create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
-    create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
+
+    unsharp = Unsharp_mask_operation({"input": "L-channel", "output": "L-channel" })
+    create_LAB.children.append(unsharp)
+
+    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
+    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
+    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
+    unsharp.children.append(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
     create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x60%"}))
     create_LAB.children.append(Boost_color_operation({"a_boost": "1.5x40%"}))
     create_LAB.children.append(Boost_color_operation({"b_boost" : "1.5x40%"}))
     create_LAB.children.append(Boost_color_operation({"b_boost" : "1.5x60%"}))
-
 
     image = Image()
     image.set_file("raw", "inputfile.cr2");
