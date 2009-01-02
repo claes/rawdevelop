@@ -2,20 +2,10 @@
 
 # Copyright Claes Holmerson 2009
 # This program can be distributed under the terms of the GNU GPL v2.
-
 import os, re, subprocess
 
-enfuse_settings = { \
-    "enfuse_exposures": ["0"], \
-        "wExposure": "1.0", \
-        "wSaturation": "0.2", \
-        "wContrast": "0", \
-        "wMu": "0.5", \
-        "wSigma": "0.2", \
-        }
-
 ufraw_settings = { \
-    "shrink": "1", \
+    "shrink": "4", \
         "wb": "camera", \
         "saturation": "1.0", \
         "restore": "lch", \
@@ -25,6 +15,15 @@ ufraw_settings = { \
         "interpolation": "ahd", \
         "wavelet-denoising-threshold": "20", \
         "out-type": "tiff16" \
+        }
+
+enfuse_settings = { \
+    "enfuse_exposures": ["0"], \
+        "wExposure": "1.0", \
+        "wSaturation": "0.2", \
+        "wContrast": "0", \
+        "wMu": "0.5", \
+        "wSigma": "0.2", \
         }
 
 greycstoration_settings = { \
@@ -136,27 +135,36 @@ class BoostColorOperation(ImageOperation):
 
         inputfile = image.get_file("current")
         outputfile = self.get_output_filename("boosted", ".tiff")
+
         a_boosted = self.get_output_filename("A-boosted", ".tiff")
         b_boosted = self.get_output_filename("B-boosted", ".tiff")
 
-        #Sigmoidal contrast format: "XxY%", where X=contrast factor, Y=center of sigmoid 
-        a_boost = self.settings["a_boost"]
-        b_boost = self.settings["b_boost"]
+        #Boost uses sigmoidal contrast format: "XxY%", where X=contrast factor, Y=center of sigmoid 
 
+        if "a_boost" in self.settings: 
+            a_boost = self.settings["a_boost"]
+            boost_A_cmd = [
+                "convert", \
+                    a_channel, \
+                    "-sigmoidal-contrast", a_boost, \
+                    a_boosted
+                ]
+            subprocess.call(boost_A_cmd, 0, None, None, None, None)
+        else:
+            a_boosted = a_channel
 
-        boost_A_cmd = [
-            "convert", \
-                a_channel, \
-                "-sigmoidal-contrast", a_boost, \
-                a_boosted
-            ]
-        boost_B_cmd = [
-            "convert", \
-                b_channel, \
-                "-sigmoidal-contrast", b_boost, \
-                b_boosted
-            ]
-        
+        if "b_boost" in self.settings:
+            b_boost = self.settings["b_boost"]
+            boost_B_cmd = [
+                "convert", \
+                    b_channel, \
+                    "-sigmoidal-contrast", b_boost, \
+                    b_boosted
+                ]
+            subprocess.call(boost_B_cmd, 0, None, None, None, None)
+        else:
+            b_boosted = b_channel
+
         lab_to_rgb_cmd = [
             "convert", \
                 l_channel, \
@@ -166,10 +174,7 @@ class BoostColorOperation(ImageOperation):
                 b_boosted, "-compose", "CopyBlue", "-composite", \
                 "-colorspace", "RGB", \
                 outputfile
-            ]
-        
-        subprocess.call(boost_A_cmd, 0, None, None, None, None)
-        subprocess.call(boost_B_cmd, 0, None, None, None, None)
+            ]        
         subprocess.call(lab_to_rgb_cmd, 0, None, None, None, None)                    
 
 class ReduceNoiseOperation(ImageOperation):
@@ -324,6 +329,11 @@ def main():
     create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
     create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
     create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
+    create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x60%"}))
+    create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x40%"}))
+    create_LAB.children.append(BoostColorOperation({"b_boost" : "1.5x40%"}))
+    create_LAB.children.append(BoostColorOperation({"b_boost" : "1.5x60%"}))
+
 
     image = Image()
     image.set_file("raw", "inputfile.cr2");
