@@ -1,0 +1,5 @@
+Image stack with aliases
+Abstracted process execution to redirect stdin, stdout
+Input, output arguments to all operations
+Operations check their availability at definition time
+Graphical interface to choose next step among children ("ChoiseOperation")

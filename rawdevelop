@@ -2,6 +2,7 @@
 
 # Copyright Claes Holmerson 2009
 # This program can be distributed under the terms of the GNU GPL v2.
+
 import os, re, subprocess
 
 ufraw_settings = { \
@@ -247,8 +248,6 @@ class Reduce_noise_operation(ImageOperation):
         
         retval = subprocess.call(greycstoration_cmd, 0, None, None, None, None)
         image.set_file("current", outputfile)
-
-
 
 class Enfuse_from_raw_operation(ImageOperation):
 
