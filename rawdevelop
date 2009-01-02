@@ -3,7 +3,8 @@
 import os, re, subprocess
 
 enfuse_settings = { \
-    "wExposure": "1.0", \
+    "enfuse_exposures": ["0"], \
+        "wExposure": "1.0", \
         "wSaturation": "0.2", \
         "wContrast": "0", \
         "wMu": "0.5", \
@@ -11,7 +12,7 @@ enfuse_settings = { \
         }
 
 ufraw_settings = { \
-    "shrink": "2", \
+    "shrink": "1", \
         "wb": "camera", \
         "saturation": "1.0", \
         "restore": "lch", \
@@ -70,6 +71,54 @@ class Image:
     def set_file(self, name, file):
         self.files[name] = file
 
+
+class CreateLABOperation(ImageOperation):
+
+    def __init__(self, settings):
+        ImageOperation.__init__(self, settings)
+        self.name = "Create LAB"
+
+
+    def operation(self, image):
+        inputfile = image.get_file("current")
+        l_channel = self.get_output_filename("L", ".tiff")
+        a_channel = self.get_output_filename("A", ".tiff")
+        b_channel = self.get_output_filename("B", ".tiff")
+
+        #Convert to LAB colorspace
+        rgb_to_lab_L_cmd = [
+            "convert", \
+                inputfile, \
+                "-colorspace", "LAB", \
+                "-channel", "R", \
+                "-separate", \
+                l_channel
+            ]
+        rgb_to_lab_A_cmd = [
+            "convert", \
+                inputfile, \
+                "-colorspace", "LAB", \
+                "-channel", "G", \
+                "-separate", \
+                a_channel
+            ]
+        rgb_to_lab_B_cmd = [
+            "convert", \
+                inputfile, \
+                "-colorspace", "LAB", \
+                "-channel", "B", \
+                "-separate", \
+                b_channel
+            ]
+
+        subprocess.call(rgb_to_lab_L_cmd, 0, None, None, None, None)
+        subprocess.call(rgb_to_lab_A_cmd, 0, None, None, None, None)
+        subprocess.call(rgb_to_lab_B_cmd, 0, None, None, None, None)
+
+        image.set_file("L-channel", l_channel)    
+        image.set_file("A-channel", a_channel)    
+        image.set_file("B-channel", b_channel)    
+
 class BoostColorOperation(ImageOperation):
 
     def __init__(self, settings):
@@ -77,6 +126,11 @@ class BoostColorOperation(ImageOperation):
         self.name = "Boost color"
 
     def operation(self, image):
+
+        l_channel = image.get_file("L-channel")
+        a_channel = image.get_file("A-channel")
+        b_channel = image.get_file("B-channel")
+
         inputfile = image.get_file("current")
         outputfile = self.get_output_filename("boosted", ".tiff")
         a_boosted = self.get_output_filename("A-boosted", ".tiff")
@@ -86,61 +140,31 @@ class BoostColorOperation(ImageOperation):
         a_boost = self.settings["a_boost"]
         b_boost = self.settings["b_boost"]
 
-        print a_boost, b_boost
 
-        #Convert to LAB colorspace
-        rgb_to_lab_L_cmd = [
-            "convert", \
-                inputfile, \
-                "-colorspace", "LAB", \
-                "-channel", "R", \
-                "-separate", \
-                "L.tiff"
-            ]
-        rgb_to_lab_A_cmd = [
-            "convert", \
-                inputfile, \
-               "-colorspace", "LAB", \
-                "-channel", "G", \
-                "-separate", \
-                "A.tiff"
-            ]
-        rgb_to_lab_B_cmd = [
-            "convert", \
-                inputfile, \
-                "-colorspace", "LAB", \
-                "-channel", "B", \
-                "-separate", \
-                "B.tiff"
-            ]
-        
         boost_A_cmd = [
             "convert", \
-                "A.tiff", \
+                a_channel, \
                 "-sigmoidal-contrast", a_boost, \
                 a_boosted
             ]
         boost_B_cmd = [
             "convert", \
-                "B.tiff", \
+                b_channel, \
                 "-sigmoidal-contrast", b_boost, \
                 b_boosted
             ]
         
         lab_to_rgb_cmd = [
             "convert", \
-                "L.tiff", \
+                l_channel, \
                 "-colorspace", "LAB", \
-                "L.tiff", "-compose", "CopyRed", "-composite",  \
+                l_channel, "-compose", "CopyRed", "-composite",  \
                 a_boosted, "-compose", "CopyGreen", "-composite", \
                 b_boosted, "-compose", "CopyBlue", "-composite", \
                 "-colorspace", "RGB", \
                 outputfile
             ]
         
-        subprocess.call(rgb_to_lab_L_cmd, 0, None, None, None, None)
-        subprocess.call(rgb_to_lab_A_cmd, 0, None, None, None, None)
-        subprocess.call(rgb_to_lab_B_cmd, 0, None, None, None, None)
         subprocess.call(boost_A_cmd, 0, None, None, None, None)
         subprocess.call(boost_B_cmd, 0, None, None, None, None)
         subprocess.call(lab_to_rgb_cmd, 0, None, None, None, None)                    
@@ -209,7 +233,6 @@ class EnfuseFromRawOperation(ImageOperation):
             
             retval = subprocess.call(ufraw_cmd, 0, None, None, None, None)
             developedfiles.append(outputfile)
-            
             
         outputfile = self.get_output_filename("out", ".tiff")
             
@@ -292,10 +315,12 @@ class DevelopFromRawOperation(ImageOperation):
 def main():    
 
     enfuse_from_raw = EnfuseFromRawOperation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
-    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
-    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
-    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
-    enfuse_from_raw.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
+    create_LAB = CreateLABOperation({})
+    enfuse_from_raw.children.append(create_LAB)
+    create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
+    create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
+    create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
+    create_LAB.children.append(BoostColorOperation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
 
     image = Image()
     image.set_file("raw", "inputfile.cr2");
