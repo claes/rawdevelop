@@ -59,71 +59,140 @@ class ImageOperation:
     def perform_operation(self, image):
         print self.name, self.local_settings
         self.operation(image)
-        for child in self.children: 
-            child.perform_operation(image)
+        if len(self.children) > 0:
+            for child in self.children: 
+                child.perform_operation(image)
+        else:
+            image.create_TIFF(self)
 
     def add_child(self, child):
         self.children.append(child)
 
+    def get_input(self, image):
+        if "channel" in self.settings:
+            channel_name = self.settings["channel"]
+        else:
+            channel_name = "TIFF"
+
+        input = image.get_channel(self, channel_name)
+        return input
+        
+    def set_output(self, image, output):
+        if "channel" in self.settings:
+            channel_name = self.settings["channel"]
+        else:
+            channel_name = "TIFF"
+        image.set_channel(channel_name, output)
+
+
+
 class Image: 
 
-    def __init__(self):
-        self.files = {}
-        self.depth = 0
+    def __init__(self, channels):
+        self.channels = channels
 
-    def get_file(self, name):
-        return self.files[name]
-        
-    def set_file(self, name, file):
-        self.files[name] = file
+    def get_default(self):
+        #TODO
+        return channel["TIFF"]
 
+    def set_channel(self, channel_name, channel):
+        self.channels[channel_name] = channel
 
-class RGB_to_LAB_operation(ImageOperation):
+    def get_channel(self, imageop, channel_name):
+        if channel_name == "L" or channel_name == "A" or channel_name == "B":
+            if not self.is_LAB():
+                self.transform_LAB(imageop)
+            return self.channels[channel_name]
+        elif channel_name == "TIFF":
+            if not self.is_TIFF():
+                self.transform_TIFF(imageop)
+            return self.channels["TIFF"] 
+        elif channel_name == "RAW":
+            if self.is_RAW():
+                return self.channels["RAW"] 
+        raise Exception("Could not retrieve channel " + channel_name)
 
-    def __init__(self, settings):
-        ImageOperation.__init__(self, settings)
-        self.name = "Create LAB"
+    def is_LAB(self):
+        return "L" in self.channels and "A" in self.channels and "B" in self.channels
 
+    def is_TIFF(self):
+        return "TIFF" in self.channels
 
-    def operation(self, image):
-        inputfile = image.get_file("current")
-        l_channel = self.get_output_filename("L", ".tiff")
-        a_channel = self.get_output_filename("A", ".tiff")
-        b_channel = self.get_output_filename("B", ".tiff")
+    def is_RAW(self):
+        return "RAW" in self.channels
 
-        #Convert to LAB colorspace
-        rgb_to_lab_L_cmd = [
-            "convert", \
-                inputfile, \
-                "-colorspace", "LAB", \
-                "-channel", "R", \
-                "-separate", \
-                l_channel
+    def get_RAW(self):
+        return self.channels["RAW"]
+
+    def get_TIFF(self):
+        return self.channels["TIFF"]
+
+    def transform_TIFF(self, imageop):
+        self.channels = self.create_TIFF(imageop)
+
+    def create_TIFF(self, imageop):
+        if not self.is_TIFF():
+
+            l_channel = self.channels["L"]
+            a_channel = self.channels["A"]
+            b_channel = self.channels["B"]
+
+            outputfile = imageop.get_output_filename("", ".tiff")
+
+            lab_to_rgb_cmd = [
+                "convert", \
+                    l_channel, \
+                    "-colorspace", "LAB", \
+                    l_channel, "-compose", "CopyRed", "-composite",  \
+                    a_channel, "-compose", "CopyGreen", "-composite", \
+                    b_channel, "-compose", "CopyBlue", "-composite", \
+                    "-colorspace", "RGB", \
+                    outputfile
+                ]        
+            subprocess.call(lab_to_rgb_cmd, 0, None, None, None, None)         
+            return {"TIFF": outputfile}        
+
+    def transform_LAB(self, imageop):
+
+        if not self.is_LAB():
+
+            inputfile = self.channels["TIFF"]
+
+            l_channel = imageop.get_output_filename("L", ".tiff")
+            a_channel = imageop.get_output_filename("A", ".tiff")
+            b_channel = imageop.get_output_filename("B", ".tiff")
+            
+            #Convert to LAB colorspace
+            rgb_to_lab_L_cmd = [
+                "convert", \
+                    inputfile, \
+                    "-colorspace", "LAB", \
+                    "-channel", "R", \
+                    "-separate", \
+                    l_channel
+                ]
+            rgb_to_lab_A_cmd = [
+                "convert", \
+                    inputfile, \
+                    "-colorspace", "LAB", \
+                    "-channel", "G", \
+                    "-separate", \
+                    a_channel
             ]
-        rgb_to_lab_A_cmd = [
-            "convert", \
-                inputfile, \
-                "-colorspace", "LAB", \
-                "-channel", "G", \
-                "-separate", \
-                a_channel
-            ]
-        rgb_to_lab_B_cmd = [
-            "convert", \
-                inputfile, \
-                "-colorspace", "LAB", \
-                "-channel", "B", \
-                "-separate", \
-                b_channel
-            ]
+            rgb_to_lab_B_cmd = [
+                "convert", \
+                    inputfile, \
+                    "-colorspace", "LAB", \
+                    "-channel", "B", \
+                    "-separate", \
+                    b_channel
+                ]            
+            subprocess.call(rgb_to_lab_L_cmd, 0, None, None, None, None)
+            subprocess.call(rgb_to_lab_A_cmd, 0, None, None, None, None)
+            subprocess.call(rgb_to_lab_B_cmd, 0, None, None, None, None)
+            
+            self.channels = {"L": l_channel, "A": a_channel, "B": b_channel}
 
-        subprocess.call(rgb_to_lab_L_cmd, 0, None, None, None, None)
-        subprocess.call(rgb_to_lab_A_cmd, 0, None, None, None, None)
-        subprocess.call(rgb_to_lab_B_cmd, 0, None, None, None, None)
-
-        image.set_file("L-channel", l_channel)    
-        image.set_file("A-channel", a_channel)    
-        image.set_file("B-channel", b_channel)    
 
 
 class Unsharp_mask_operation(ImageOperation):
@@ -134,17 +203,8 @@ class Unsharp_mask_operation(ImageOperation):
 
     def operation(self, image):
 
-        if "input" in self.settings:
-            input = self.settings["input"]
-        else:
-            input = "current"
+        inputfile = self.get_input(image)
 
-        if "output" in self.settings:
-            output = self.settings["output"]
-        else:
-            output = "current"
-
-        inputfile = image.get_file(input)
         outputfile = self.get_output_filename("", ".tiff")
 
         if "unsharp" in self.settings:
@@ -160,7 +220,7 @@ class Unsharp_mask_operation(ImageOperation):
             ]        
         subprocess.call(unsharp_mask_cmd, 0, None, None, None, None)
 
-        image.set_file(output, outputfile)
+        self.set_output(image, outputfile)
 
 
 class Boost_color_operation(ImageOperation):
@@ -171,15 +231,11 @@ class Boost_color_operation(ImageOperation):
 
     def operation(self, image):
 
-        l_channel = image.get_file("L-channel")
-        a_channel = image.get_file("A-channel")
-        b_channel = image.get_file("B-channel")
+        a_channel = image.get_channel(self, "A")
+        b_channel = image.get_channel(self, "B")
 
-        inputfile = image.get_file("current")
-        outputfile = self.get_output_filename("boosted", ".tiff")
-
-        a_boosted = self.get_output_filename("A-boosted", ".tiff")
-        b_boosted = self.get_output_filename("B-boosted", ".tiff")
+        a_boosted = self.get_output_filename("A:boosted", ".tiff")
+        b_boosted = self.get_output_filename("B:boosted", ".tiff")
 
         #Boost uses sigmoidal contrast format: "XxY%", where X=contrast factor, Y=center of sigmoid 
 
@@ -207,17 +263,9 @@ class Boost_color_operation(ImageOperation):
         else:
             b_boosted = b_channel
 
-        lab_to_rgb_cmd = [
-            "convert", \
-                l_channel, \
-                "-colorspace", "LAB", \
-                l_channel, "-compose", "CopyRed", "-composite",  \
-                a_boosted, "-compose", "CopyGreen", "-composite", \
-                b_boosted, "-compose", "CopyBlue", "-composite", \
-                "-colorspace", "RGB", \
-                outputfile
-            ]        
-        subprocess.call(lab_to_rgb_cmd, 0, None, None, None, None)                    
+        image.set_channel("A", a_boosted)
+        image.set_channel("B", b_boosted)
+
 
 class Reduce_noise_operation(ImageOperation):
 
@@ -227,7 +275,7 @@ class Reduce_noise_operation(ImageOperation):
 
     def operation(self, image):
         
-        inputfile = image.get_file("current")
+        inputfile =  self.get_input(image)
         outputfile = self.get_output_filename("", ".tiff")
         
         greycstoration_cmd = [
@@ -247,7 +295,7 @@ class Reduce_noise_operation(ImageOperation):
             ]
         
         retval = subprocess.call(greycstoration_cmd, 0, None, None, None, None)
-        image.set_file("current", outputfile)
+        self.set_output(image, outputfile)
 
 class Enfuse_from_raw_operation(ImageOperation):
 
@@ -256,8 +304,9 @@ class Enfuse_from_raw_operation(ImageOperation):
         self.name = "Develop from raw, enfuse"
         
     def operation(self, image):
-        inputfile = image.get_file("raw")
-        
+
+        inputfile = image.get_channel(self, "RAW")
+
         exposure_list = self.settings["enfuse_exposures"]
         developedfiles = []
         
@@ -295,7 +344,8 @@ class Enfuse_from_raw_operation(ImageOperation):
         enfuse_cmd1.extend(developedfiles)
         
         retval = subprocess.call(enfuse_cmd1, 0, None, None, None, None)
-        image.set_file("current", outputfile)    
+
+        image.set_channel("TIFF", outputfile)
             
 
 class CA_correct_operation(ImageOperation):
@@ -306,8 +356,7 @@ class CA_correct_operation(ImageOperation):
 
     def operation(self, image):
         
-        inputfile = image.get_file("current")
-        
+        inputfile =  self.get_input(image)        
         tca_correct_cmd = ["tca_correct", \
                                "-o", "abcv", \
                                inputfile]
@@ -325,61 +374,26 @@ class CA_correct_operation(ImageOperation):
                          inputfile]
     
         retval = subprocess.call(fulla_cmd, 0, None, None, None, None)
-        image.set_file("current", outputfile)
-        
-    
-class Develop_from_raw_operation(ImageOperation):
-
-    def __init__(self, settings):
-        ImageOperation.__init__(self, settings)
-        self.name = "Develop from RAW file"
-
-    def operation(self, image):
-        
-        inputfile = image.get_file("raw")
-        outputfile = self.get_output_filename("", ".tiff")
-        
-        cmd = ["ufraw-batch", \
-                   "--shrink", self.settings["shrink"], \
-                   "--wb", self.settings["wb"], \
-                   "--saturation", self.settings["saturation"], \
-                   "--restore", self.settings["restore"], \
-                   "--exposure", self.settings["exposure"], \
-                   "--black-point", self.settings["black-point"], \
-                   "--clip", self.settings["clip"], \
-                   "--interpolation", self.settings["interpolation"], \
-                   "--wavelet-denoising-threshold", self.settings["wavelet-denoising-threshold"], \
-                   #"--overwrite", settings["overwrite"], \
-                   "--out-type", self.settings["out-type"], \
-                   "--output", outputfile, \
-                   inputfile]
-
-        # Call the subprocess using convenience method
-        retval = subprocess.call(cmd, 0, None, None, None, None)
-        
-        image.set_file("current", outputfile)
+        self.set_output(image, outputfile)
         
         
 def main():    
 
     enfuse_from_raw = Enfuse_from_raw_operation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
-    create_LAB = RGB_to_LAB_operation({})
-    enfuse_from_raw.add_child(create_LAB)
 
-    unsharp = Unsharp_mask_operation({"input": "L-channel", "output": "L-channel" })
-    create_LAB.add_child(unsharp)
+    unsharp = Unsharp_mask_operation({"channel": "L" })
+    enfuse_from_raw.add_child(unsharp)
 
     unsharp.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
     unsharp.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
     unsharp.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
     unsharp.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
-    create_LAB.add_child(Boost_color_operation({"a_boost": "1.5x60%"}))
-    create_LAB.add_child(Boost_color_operation({"a_boost": "1.5x40%"}))
-    create_LAB.add_child(Boost_color_operation({"b_boost" : "1.5x40%"}))
-    create_LAB.add_child(Boost_color_operation({"b_boost" : "1.5x60%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x40%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x60%"}))
 
-    image = Image()
-    image.set_file("raw", "inputfile.cr2");
+    image = Image({"RAW": "inputfile.cr2"});
 
     enfuse_from_raw.perform_operation(image)
 
