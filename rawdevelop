@@ -147,6 +147,7 @@ class Image:
             lab_to_rgb_cmd = [
                 "convert", \
                     l_channel, \
+                    "-depth", "16", \
                     "-colorspace", "LAB", \
                     l_channel, "-compose", "CopyRed", "-composite",  \
                     a_channel, "-compose", "CopyGreen", "-composite", \
@@ -171,6 +172,7 @@ class Image:
             rgb_to_lab_L_cmd = [
                 "convert", \
                     inputfile, \
+                    "-depth", "16", \
                     "-colorspace", "LAB", \
                     "-channel", "R", \
                     "-separate", \
@@ -179,6 +181,7 @@ class Image:
             rgb_to_lab_A_cmd = [
                 "convert", \
                     inputfile, \
+                    "-depth", "16", \
                     "-colorspace", "LAB", \
                     "-channel", "G", \
                     "-separate", \
@@ -187,6 +190,7 @@ class Image:
             rgb_to_lab_B_cmd = [
                 "convert", \
                     inputfile, \
+                    "-depth", "16", \
                     "-colorspace", "LAB", \
                     "-channel", "B", \
                     "-separate", \
@@ -217,7 +221,8 @@ class Unsharp_mask_operation(ImageOperation):
         unsharp_mask_cmd = [
             "convert", \
                 inputfile, \
-            "-unsharp", unsharp, \
+                "-depth", "16", \
+                "-unsharp", unsharp, \
                 outputfile
             ]        
         execute(unsharp_mask_cmd)
@@ -246,6 +251,7 @@ class Boost_color_operation(ImageOperation):
             boost_A_cmd = [
                 "convert", \
                     a_channel, \
+                    "-depth", "16", \
                     "-sigmoidal-contrast", a_boost, \
                     a_boosted
                 ]
@@ -258,6 +264,7 @@ class Boost_color_operation(ImageOperation):
             boost_B_cmd = [
                 "convert", \
                     b_channel, \
+                    "-depth", "16", \
                     "-sigmoidal-contrast", b_boost, \
                     b_boosted
                 ]
@@ -386,10 +393,10 @@ def main():
     unsharp = Unsharp_mask_operation({"channel": "L" })
     enfuse_from_raw.add_child(unsharp)
 
-    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
-    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
-    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
-    unsharp.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
+    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
     enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%"}))
     enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%"}))
     enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x40%"}))
