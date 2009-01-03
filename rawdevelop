@@ -3,7 +3,7 @@
 # Copyright Claes Holmerson 2009
 # This program can be distributed under the terms of the GNU GPL v2.
 
-import os, re, subprocess
+import os, re, subprocess, copy
 
 ufraw_settings = { \
     "shrink": "4", \
@@ -44,6 +44,10 @@ global_settings.update(enfuse_settings)
 global_settings.update(ufraw_settings)
 global_settings.update(greycstoration_settings)
 
+def execute(cmd):
+    subprocess.call(cmd, 0, None, None, None, None)         
+
+
 class ImageOperation:
     
     def __init__(self, settings):
@@ -61,7 +65,8 @@ class ImageOperation:
         self.operation(image)
         if len(self.children) > 0:
             for child in self.children: 
-                child.perform_operation(image)
+                childimage = copy.deepcopy(image)
+                child.perform_operation(childimage)
         else:
             image.create_TIFF(self)
 
@@ -149,7 +154,7 @@ class Image:
                     "-colorspace", "RGB", \
                     outputfile
                 ]        
-            subprocess.call(lab_to_rgb_cmd, 0, None, None, None, None)         
+            execute(lab_to_rgb_cmd)         
             return {"TIFF": outputfile}        
 
     def transform_LAB(self, imageop):
@@ -187,13 +192,10 @@ class Image:
                     "-separate", \
                     b_channel
                 ]            
-            subprocess.call(rgb_to_lab_L_cmd, 0, None, None, None, None)
-            subprocess.call(rgb_to_lab_A_cmd, 0, None, None, None, None)
-            subprocess.call(rgb_to_lab_B_cmd, 0, None, None, None, None)
-            
+            execute(rgb_to_lab_L_cmd)
+            execute(rgb_to_lab_A_cmd)
+            execute(rgb_to_lab_B_cmd)            
             self.channels = {"L": l_channel, "A": a_channel, "B": b_channel}
-
-
 
 class Unsharp_mask_operation(ImageOperation):
 
@@ -218,7 +220,7 @@ class Unsharp_mask_operation(ImageOperation):
             "-unsharp", unsharp, \
                 outputfile
             ]        
-        subprocess.call(unsharp_mask_cmd, 0, None, None, None, None)
+        execute(unsharp_mask_cmd)
 
         self.set_output(image, outputfile)
 
@@ -247,7 +249,7 @@ class Boost_color_operation(ImageOperation):
                     "-sigmoidal-contrast", a_boost, \
                     a_boosted
                 ]
-            subprocess.call(boost_A_cmd, 0, None, None, None, None)
+            execute(boost_A_cmd)
         else:
             a_boosted = a_channel
 
@@ -259,7 +261,7 @@ class Boost_color_operation(ImageOperation):
                     "-sigmoidal-contrast", b_boost, \
                     b_boosted
                 ]
-            subprocess.call(boost_B_cmd, 0, None, None, None, None)
+            execute(boost_B_cmd)
         else:
             b_boosted = b_channel
 
@@ -294,7 +296,7 @@ class Reduce_noise_operation(ImageOperation):
                 "-crange", self.settings["crange"]
             ]
         
-        retval = subprocess.call(greycstoration_cmd, 0, None, None, None, None)
+        execute(greycstoration_cmd)
         self.set_output(image, outputfile)
 
 class Enfuse_from_raw_operation(ImageOperation):
@@ -328,7 +330,7 @@ class Enfuse_from_raw_operation(ImageOperation):
                              "--output", outputfile, \
                              inputfile]
             
-            retval = subprocess.call(ufraw_cmd, 0, None, None, None, None)
+            execute(ufraw_cmd)
             developedfiles.append(outputfile)
             
         outputfile = self.get_output_filename("out", ".tiff")
@@ -343,7 +345,7 @@ class Enfuse_from_raw_operation(ImageOperation):
         
         enfuse_cmd1.extend(developedfiles)
         
-        retval = subprocess.call(enfuse_cmd1, 0, None, None, None, None)
+        execute(enfuse_cmd1)
 
         image.set_channel("TIFF", outputfile)
             
@@ -373,7 +375,7 @@ class CA_correct_operation(ImageOperation):
                          "-o", outputfile, \
                          inputfile]
     
-        retval = subprocess.call(fulla_cmd, 0, None, None, None, None)
+        execute(fulla_cmd)
         self.set_output(image, outputfile)
         
         
