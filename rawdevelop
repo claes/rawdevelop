@@ -56,9 +56,10 @@ class ImageOperation:
         #Override global settings with local settings
         self.settings = global_settings.copy()
         self.settings.update(self.local_settings)
+        self.id = 0
 
     def get_output_filename(self, suffix, extension):
-        return self.name + " " +  suffix + " " + str(self.local_settings) + extension
+        return self.name + " " +  suffix + " " + str(self.id) + " " + str(self.local_settings) + extension
 
     def perform_operation(self, image):
         print self.name, self.local_settings
@@ -71,6 +72,7 @@ class ImageOperation:
             image.create_TIFF(self)
 
     def add_child(self, child):
+        child.id = self.id + 1
         self.children.append(child)
 
     def get_input(self, image):
@@ -201,6 +203,9 @@ class Image:
             execute(rgb_to_lab_B_cmd)            
             self.channels = {"L": l_channel, "A": a_channel, "B": b_channel}
 
+
+
+
 class Unsharp_mask_operation(ImageOperation):
 
     def __init__(self, settings):
@@ -306,6 +311,41 @@ class Reduce_noise_operation(ImageOperation):
         execute(greycstoration_cmd)
         self.set_output(image, outputfile)
 
+
+class Dcraw_operation(ImageOperation):
+
+    def __init__(self, settings):
+        ImageOperation.__init__(self, settings)
+        self.name = "dcraw"
+
+    def operation(self, image):
+
+        inputfile = image.get_channel(self, "RAW")
+
+        outputfile = self.get_output_filename("", ".tiff")
+
+        dcraw_cmd = [
+            "dcraw", \
+                #camera whitebalance
+            "-w", 
+            #linear mode, no clipping in highlights
+            "-H", "0",
+            #SRGB
+            "-o", "1",
+                #demosaicing method 
+            "-q", "3",
+                #linear 16-bit
+            "-4", 
+            #tiff output
+            "-T", 
+            inputfile
+            ]        
+        execute(dcraw_cmd)
+
+        self.set_output(image, outputfile)
+
+
+
 class Enfuse_from_raw_operation(ImageOperation):
 
     def __init__(self, settings):
@@ -385,25 +425,45 @@ class CA_correct_operation(ImageOperation):
         execute(fulla_cmd)
         self.set_output(image, outputfile)
         
+
+def main1():    
+    image = Image({"RAW": "inputfile.cr2"});
+
+    dcraw_operation = Dcraw_operation({})
+    dcraw_operation.perform_operation(image)
         
-def main():    
+def main2():    
 
     enfuse_from_raw = Enfuse_from_raw_operation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
 
-    unsharp = Unsharp_mask_operation({"channel": "L" })
-    enfuse_from_raw.add_child(unsharp)
+    unsharp0 = Unsharp_mask_operation({"channel": "L", "unsharp" : "0x0"})
+    unsharp1 = Unsharp_mask_operation({"channel": "L", "unsharp" : "0x1"})
+    unsharp2 = Unsharp_mask_operation({"channel": "L", "unsharp" : "0x2"})
+    unsharp3 = Unsharp_mask_operation({"channel": "L", "unsharp" : "0x0.5"})
+    unsharp4 = Unsharp_mask_operation({"channel": "TIFF", "unsharp" : "0x0"})
+    unsharp5 = Unsharp_mask_operation({"channel": "TIFF", "unsharp" : "0x1"})
+    unsharp6 = Unsharp_mask_operation({"channel": "TIFF", "unsharp" : "0x2"})
+    unsharp7 = Unsharp_mask_operation({"channel": "TIFF", "unsharp" : "0x0.5"})
+    enfuse_from_raw.add_child(unsharp0)
+    enfuse_from_raw.add_child(unsharp1)
+    enfuse_from_raw.add_child(unsharp2)
+    enfuse_from_raw.add_child(unsharp3)
+    enfuse_from_raw.add_child(unsharp4)
+    enfuse_from_raw.add_child(unsharp5)
+    enfuse_from_raw.add_child(unsharp6)
+    enfuse_from_raw.add_child(unsharp7)
 
-    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
-    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
-    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
-    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
-    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%"}))
-    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%"}))
-    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x40%"}))
-    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x60%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x60%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x40%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%", "b_boost" : "1.5x40%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%", "b_boost" : "1.5x60%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x60%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"a_boost": "1.5x40%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x40%"}))
+#    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x60%"}))
 
     image = Image({"RAW": "inputfile.cr2"});
 
     enfuse_from_raw.perform_operation(image)
 
-main()
+main1()
