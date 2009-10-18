@@ -3,7 +3,7 @@
 # Copyright Claes Holmerson 2009
 # This program can be distributed under the terms of the GNU GPL v2.
 
-import os, re, subprocess, copy
+import os, re, subprocess, copy, sys
 
 ufraw_settings = { \
     "shrink": "4", \
@@ -344,6 +344,26 @@ class Dcraw_operation(ImageOperation):
 
         self.set_output(image, outputfile)
 
+class Convert_operation(ImageOperation):
+
+    def __init__(self, settings):
+        ImageOperation.__init__(self, settings)
+        self.name = "dcraw"
+
+    def operation(self, image):
+
+        inputfile =  self.get_input(image)        
+
+        outputfile = self.get_output_filename("", ".tiff")
+
+        dcraw_cmd = [
+            "convert", \
+            inputfile, \
+            outputfile, \
+            ]        
+        execute(dcraw_cmd)
+
+        self.set_output(image, outputfile)
 
 
 class Enfuse_from_raw_operation(ImageOperation):
@@ -425,14 +445,14 @@ class CA_correct_operation(ImageOperation):
         execute(fulla_cmd)
         self.set_output(image, outputfile)
         
+def main(rawfile):    
 
-def main1():    
-    image = Image({"RAW": "inputfile.cr2"});
+    enfuse_from_raw = Enfuse_from_raw_operation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
+    image = Image({"RAW": rawfile});
+    enfuse_from_raw.perform_operation(image)
 
-    dcraw_operation = Dcraw_operation({})
-    dcraw_operation.perform_operation(image)
         
-def main2():    
+def main_tmp(rawfile):    
 
     enfuse_from_raw = Enfuse_from_raw_operation({"enfuse_exposures": [ "-2", "-1", "0", "1", "2"]})
 
@@ -462,8 +482,10 @@ def main2():
 #    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x40%"}))
 #    enfuse_from_raw.add_child(Boost_color_operation({"b_boost" : "1.5x60%"}))
 
-    image = Image({"RAW": "inputfile.cr2"});
+    image = Image({"RAW": rawfile});
 
     enfuse_from_raw.perform_operation(image)
 
-main1()
+
+rawfile = sys.argv[1]
+main(rawfile)
